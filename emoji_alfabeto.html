@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Generador de frases con Emojis-Letras (offline)</title>
+<style>
+  :root { --pad: .75rem; --radius: .75rem; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 1rem auto; max-width: 980px; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+  .row { display: grid; gap: .75rem; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .card { border: 1px solid #ddd; border-radius: var(--radius); padding: var(--pad); background: #fff; }
+  textarea { width: 100%; min-height: 8rem; font-size: 1rem; padding: .6rem; border-radius: .5rem; border: 1px solid #ccc; }
+  input[type="text"] { width: 100%; padding: .4rem .55rem; border: 1px solid #ccc; border-radius: .5rem; font-size: 1rem; }
+  select, button { padding: .55rem .8rem; border-radius: .5rem; border: 1px solid #bbb; background: #f8f8f8; cursor: pointer; }
+  button.primary { background: #1a73e8; color: white; border-color: #1a73e8; }
+  button.ghost { background: white; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .mapping-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: .5rem; }
+  .mapcell { display: grid; gap: .25rem; font-size: .9rem; }
+  .mapcell label { color: #666; font-size: .8rem; }
+  .muted { color: #666; font-size: .9rem; }
+  details { padding: .25rem 0; }
+  .pill { display:inline-block; padding:.15rem .5rem; border:1px solid #ddd; border-radius:999px; font-size:.8rem; color:#555; }
+  .foot { margin-top: .5rem; color:#666; font-size:.85rem; }
+</style>
+</head>
+<body>
+  <h1>🔤➡️😊 Generador de frases con Emojis-Letras (offline)</h1>
+  <p class="muted">Escribe un texto y conviértelo en una secuencia de emojis según un alfabeto configurable. Funciona sin Internet y guarda tus cambios en este dispositivo.</p>
+
+  <div class="row grid-2">
+    <div class="card">
+      <h3>Entrada</h3>
+      <textarea id="in" placeholder="Escribe aquí... Ej.: Hola Pedro, ¿qué tal?"></textarea>
+      <div class="toolbar" style="margin-top:.5rem">
+        <button id="convert" class="primary">Convertir a Emojis</button>
+        <button id="clearIn" class="ghost">Limpiar</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Salida (emoji)</h3>
+      <textarea id="out" placeholder="Aquí saldrá tu texto convertido..." readonly></textarea>
+      <div class="toolbar" style="margin-top:.5rem">
+        <button id="copyOut">Copiar resultado</button>
+        <button id="clearOut" class="ghost">Vaciar salida</button>
+      </div>
+      <div class="foot">Sugerencia: en móvil, añade esta página a pantalla de inicio para usarla como app.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <div class="toolbar" style="justify-content: space-between;">
+      <div class="toolbar" style="gap:.5rem">
+        <label for="preset"><span class="pill">Presets</span></label>
+        <select id="preset" title="Elegir un alfabeto predefinido">
+          <option value="">— Elegir preset —</option>
+          <option value="frutas">Frutas 🍎🍌🍇</option>
+          <option value="animales">Animales 🐶🐱🐵</option>
+          <option value="objetos">Objetos 🔧🔑📦</option>
+          <option value="cartas">Cartas/Naipes 🂡🂢🂣</option>
+        </select>
+        <button id="applyPreset">Aplicar</button>
+      </div>
+      <div class="toolbar" style="gap:.5rem">
+        <button id="saveMap">Guardar mapeo</button>
+        <button id="resetMap" class="ghost">Restablecer por defecto</button>
+        <button id="exportMap">Exportar JSON</button>
+        <label for="importFile" class="pill" style="cursor:pointer">Importar JSON</label>
+        <input id="importFile" type="file" accept="application/json" style="display:none">
+      </div>
+    </div>
+    <details style="margin-top:.5rem">
+      <summary><strong>Opciones de conversión</strong></summary>
+      <div class="toolbar" style="margin-top:.5rem; gap:1rem">
+        <label><input type="checkbox" id="caseInsensitive" checked> Ignorar mayúsculas/minúsculas (A=a)</label>
+        <label><input type="checkbox" id="keepUnknown" checked> Conservar caracteres sin mapeo (deja original)</label>
+        <label><input type="checkbox" id="mapSpaces"> Mapear espacios a emoji (usa el campo “ ”)</label>
+      </div>
+      <p class="muted">Nota: para vocales acentuadas (á, é, í, ó, ú) y “ñ/Ñ”, puedes asignarles un emoji específico abajo.</p>
+    </details>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <h3>Editar alfabeto (haz tu propio set de “emojis-letras”)</h3>
+    <p class="muted">Rellena cada casilla con el emoji que quieras usar para esa letra o dígito. Se guarda localmente al pulsar “Guardar mapeo”.</p>
+    <div id="mapping" class="mapping-grid"></div>
+  </div>
+
+<script>
+/* ——— Config —— */
+const KEY = "emoji-letter-map-v1";
+
+const BASE_KEYS = [
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  ..."abcdefghijklmnopqrstuvwxyz",
+  ..."0123456789",
+  "Ñ","ñ","Á","É","Í","Ó","Ú","á","é","í","ó","ú","Ü","ü","¿","¡"," ",",",".",";","-",":","_","@","#","&","/"
+];
+
+const DEFAULT_MAP = (() => {
+  // Por defecto, usa letras enmarcadas para sugerir “modo emoji” si no eliges preset.
+  const base = {};
+  for (const ch of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") base[ch] = "🅰️🅱️🅲️🅳️🅴️🅵️🅶️🅷️🅸️🅹️🅺️🅻️🅼️🅽️🅾️🅿️🆀️🆁️🆂️🆃️🆄️🆅️🆆️🆇️🆈️🆉️"[ch.charCodeAt(0)-65] || "";
+  for (const ch of "abcdefghijklmnopqrstuvwxyz") base[ch] = base[ch.toUpperCase()] || "";
+  for (const d of "0123456789") base[d] = { "0":"0️⃣","1":"1️⃣","2":"2️⃣","3":"3️⃣","4":"4️⃣","5":"5️⃣","6":"6️⃣","7":"7️⃣","8":"8️⃣","9":"9️⃣" }[d];
+  // Especiales comunes
+  base[" "] = " ";
+  base[","] = "，"; base["."] = "。"; base[";"] = "；"; base["-"] = "—"; base[":"] = "："; base["_"] = "▁";
+  base["@"] = "📧"; base["#"] = "#️⃣"; base["&"] = "＆"; base["/"] = "∕";
+  base["¿"] = "¿"; base["¡"] = "¡";
+  // Ñ y acentos (por defecto se asocian a la base)
+  base["Ñ"] = "🅽"; base["ñ"] = base["Ñ"];
+  const accentFallback = { "Á":"🅰️","É":"🅴️","Í":"🅸️","Ó":"🅾️","Ú":"🆄️" };
+  for (const k of ["Á","É","Í","Ó","Ú"]) base[k] = accentFallback[k];
+  base["á"]=base["Á"]; base["é"]=base["É"]; base["í"]=base["Í"]; base["ó"]=base["Ó"]; base["ú"]=base["Ú"];
+  base["Ü"]="🆄️"; base["ü"]=base["Ü"];
+  return base;
+})();
+
+/* ——— Presets ——— */
+const PRESETS = {
+  frutas: (() => {
+    const p = {};
+    const seq = ["🍎","🍌","🍊","🍇","🍉","🍓","🍐","🍒","🍍","🥝","🍑","🥥","🍈","🍋","🥭","🍏","🍅","🍆","🌽","🥕","🥔","🥦","🫐","🍄","🥒","🧄"];
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((ch,i)=> p[ch]=seq[i%seq.length]);
+    "abcdefghijklmnopqrstuvwxyz".split("").forEach(ch => p[ch]=p[ch.toUpperCase()]);
+    "0123456789".split("").forEach(d => p[d] = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣"][+d]);
+    p["ñ"]=p["Ñ"]="🍇";
+    p["á"]=p["Á"]=p["A"];
+    p["é"]=p["É"]=p["E"];
+    p["í"]=p["Í"]=p["I"];
+    p["ó"]=p["Ó"]=p["O"];
+    p["ú"]=p["Ú"]=p["U"];
+    p[" "]=" ";
+    return p;
+  })(),
+  animales: (() => {
+    const p={};
+    const seq=["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🦄","🐔","🐧","🐦","🐤","🐣","🦆","🦅","🦉","🦇","🐺"];
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((ch,i)=> p[ch]=seq[i%seq.length]);
+    "abcdefghijklmnopqrstuvwxyz".split("").forEach(ch => p[ch]=p[ch.toUpperCase()]);
+    "0123456789".split("").forEach(d => p[d] = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣"][+d]);
+    p["ñ"]=p["Ñ"]="🦉"; p["á"]=p["Á"]=p["A"]; p["é"]=p["É"]=p["E"]; p["í"]=p["Í"]=p["I"]; p["ó"]=p["Ó"]=p["O"]; p["ú"]=p["Ú"]=p["U"];
+    p[" "]=" ";
+    return p;
+  })(),
+  objetos: (() => {
+    const p={};
+    const seq=["🔧","🔨","🪛","🧲","⚙️","🧰","🔑","🪙","💡","📦","📌","📎","✂️","🧻","🧴","🧯","🪟","🪑","🧱","🧵","🧶","🪢","🔭","🧪","🔬","🧫"];
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((ch,i)=> p[ch]=seq[i%seq.length]);
+    "abcdefghijklmnopqrstuvwxyz".split("").forEach(ch => p[ch]=p[ch.toUpperCase()]);
+    "0123456789".split("").forEach(d => p[d] = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣"][+d]);
+    p["ñ"]=p["Ñ"]="🔗"; p["á"]=p["Á"]=p["A"]; p["é"]=p["É"]=p["E"]; p["í"]=p["Í"]=p["I"]; p["ó"]=p["Ó"]=p["O"]; p["ú"]=p["Ú"]=p["U"];
+    p[" "]=" ";
+    return p;
+  })(),
+  cartas: (() => {
+    const p={};
+    const seq=["🂡","🂢","🂣","🂤","🂥","🂦","🂧","🂨","🂩","🂪","🂫","🂭","🂮","🂱","🂲","🂳","🂴","🂵","🂶","🂷","🂸","🂹","🂺","🂻","🂽","🂾"];
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((ch,i)=> p[ch]=seq[i%seq.length]);
+    "abcdefghijklmnopqrstuvwxyz".split("").forEach(ch => p[ch]=p[ch.toUpperCase()]);
+    "0123456789".split("").forEach(d => p[d] = ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣"][+d]);
+    p["ñ"]=p["Ñ"]="🃏"; p["á"]=p["Á"]=p["A"]; p["é"]=p["É"]=p["E"]; p["í"]=p["Í"]=p["I"]; p["ó"]=p["Ó"]=p["O"]; p["ú"]=p["Ú"]=p["U"];
+    p[" "]=" ";
+    return p;
+  })()
+};
+
+/* ——— Estado ——— */
+let stateMap = loadMap();
+
+/* ——— UI ——— */
+const els = {
+  in: document.getElementById("in"),
+  out: document.getElementById("out"),
+  convert: document.getElementById("convert"),
+  copyOut: document.getElementById("copyOut"),
+  clearIn: document.getElementById("clearIn"),
+  clearOut: document.getElementById("clearOut"),
+  mapping: document.getElementById("mapping"),
+  preset: document.getElementById("preset"),
+  applyPreset: document.getElementById("applyPreset"),
+  saveMap: document.getElementById("saveMap"),
+  resetMap: document.getElementById("resetMap"),
+  exportMap: document.getElementById("exportMap"),
+  importFile: document.getElementById("importFile"),
+  caseInsensitive: document.getElementById("caseInsensitive"),
+  keepUnknown: document.getElementById("keepUnknown"),
+  mapSpaces: document.getElementById("mapSpaces")
+};
+
+renderMapping();
+
+/* ——— Eventos ——— */
+els.convert.addEventListener("click", () => {
+  const opts = {
+    caseInsensitive: els.caseInsensitive.checked,
+    keepUnknown: els.keepUnknown.checked,
+    mapSpaces: els.mapSpaces.checked
+  };
+  const out = toEmoji(els.in.value, stateMap, opts);
+  els.out.value = out;
+});
+
+els.copyOut.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(els.out.value); } catch {}
+});
+
+els.clearIn.addEventListener("click", () => els.in.value = "");
+els.clearOut.addEventListener("click", () => els.out.value = "");
+
+els.applyPreset.addEventListener("click", () => {
+  const sel = els.preset.value;
+  if (!sel || !PRESETS[sel]) return;
+  // Combina preset con lo existente para no perder extras (como signos)
+  stateMap = {...stateMap, ...PRESETS[sel]};
+  renderMapping();
+});
+
+els.saveMap.addEventListener("click", () => {
+  // Leer celdas y guardar
+  const inputs = document.querySelectorAll(".mapcell input");
+  inputs.forEach(inp => {
+    const key = inp.dataset.key;
+    stateMap[key] = inp.value || "";
+  });
+  saveMap(stateMap);
+  alert("Mapeo guardado en este dispositivo ✅");
+});
+
+els.resetMap.addEventListener("click", () => {
+  if (!confirm("¿Restablecer el mapeo a valores por defecto?")) return;
+  stateMap = {...DEFAULT_MAP};
+  renderMapping();
+  saveMap(stateMap);
+});
+
+els.exportMap.addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(stateMap,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "emoji_map.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+els.importFile.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const obj = JSON.parse(text);
+    if (typeof obj !== "object") throw new Error("JSON inválido");
+    stateMap = {...stateMap, ...obj};
+    renderMapping();
+    saveMap(stateMap);
+    alert("Mapeo importado ✅");
+  } catch (err) {
+    alert("No se pudo importar el JSON: " + err.message);
+  } finally {
+    e.target.value = "";
+  }
+});
+
+/* ——— Lógica ——— */
+function toEmoji(text, map, {caseInsensitive=true, keepUnknown=true, mapSpaces=false}={}) {
+  let out = "";
+  for (const ch of [...text]) {
+    let key = ch;
+    if (key === " " && !mapSpaces) { out += " "; continue; }
+    if (caseInsensitive) {
+      if (map[key] == null) {
+        // prueba con mayúscula o minúscula
+        const alt = /[a-z]/.test(key) ? key.toUpperCase() :
+                    /[A-Z]/.test(key) ? key.toLowerCase() : key;
+        if (map[alt] != null) key = alt;
+      }
+    }
+    if (map[key] != null && map[key] !== "") out += map[key];
+    else out += keepUnknown ? ch : "";
+  }
+  return out;
+}
+
+function renderMapping() {
+  els.mapping.innerHTML = "";
+  const keys = BASE_KEYS;
+  for (const k of keys) {
+    const wrap = document.createElement("div");
+    wrap.className = "mapcell";
+    const lab = document.createElement("label");
+    lab.textContent = k === " " ? "␣ (espacio)" : k;
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.maxLength = 8; // varios emojis/ZWJ si quieres
+    inp.value = stateMap[k] ?? "";
+    inp.dataset.key = k;
+    wrap.appendChild(lab);
+    wrap.appendChild(inp);
+    els.mapping.appendChild(wrap);
+  }
+}
+
+function saveMap(m) { try { localStorage.setItem(KEY, JSON.stringify(m)); } catch {} }
+function loadMap() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) return {...DEFAULT_MAP, ...JSON.parse(raw)};
+  } catch {}
+  return {...DEFAULT_MAP};
+}
+</script>
+</body>
+</html>

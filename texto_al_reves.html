@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Texto al revés (offline)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 800px; }
+  textarea { width: 100%; height: 8rem; font-size: 1.1rem; }
+  .out { white-space: pre-wrap; padding: 1rem; border: 1px solid #ddd; border-radius: .5rem; min-height: 4rem; }
+  button { padding: .6rem 1rem; margin-right: .5rem; cursor: pointer; }
+</style>
+<body>
+  <h1>Texto al revés</h1>
+  <p>Escribe lo que quieras y pulsa “Invertir”. El resultado se copia al portapapeles automáticamente.</p>
+  <textarea id="in"></textarea><br><br>
+  <button id="btn">Invertir</button>
+  <button id="copiar">Copiar</button>
+  <div class="out" id="out"></div>
+<script>
+const map = new Map(Object.entries({
+  a:'ɐ', b:'q', c:'ɔ', d:'p', e:'ǝ', f:'ɟ', g:'ƃ', h:'ɥ', i:'ᴉ', j:'ɾ', k:'ʞ', l:'ʅ', m:'ɯ', n:'u', o:'o', p:'d', q:'b', r:'ɹ', s:'s', t:'ʇ', u:'n', v:'ʌ', w:'ʍ', x:'x', y:'ʎ', z:'z',
+  A:'∀', B:'𐐒', C:'Ɔ', D:'ᗡ', E:'Ǝ', F:'Ⅎ', G:'פ', H:'H', I:'I', J:'ſ', K:'ʞ', L:'˥', M:'W', N:'N', O:'O', P:'Ԁ', Q:'Ό', R:'ᴚ', S:'S', T:'⊥', U:'∩', V:'Λ', W:'M', X:'X', Y:'ʎ', Z:'Z',
+  '0':'0', '1':'Ɩ', '2':'ᄅ', '3':'Ɛ', '4':'ㄣ', '5':'ϛ', '6':'9', '7':'ㄥ', '8':'8', '9':'6',
+  '.':'˙', ',':'\'', '?':'¿', '!':'¡', '"':'„', "'":'‚', '(' :')', ')':'(', '[':']', ']':'[', '{':'}', '}':'{', '<':'>', '>':'<', '_':'‾'
+}));
+function invertir(s){
+  return [...s].reverse().map(c => map.get(c) ?? c).join('');
+}
+const $in  = document.getElementById('in');
+const $out = document.getElementById('out');
+document.getElementById('btn').onclick = async () => {
+  const r = invertir($in.value);
+  $out.textContent = r;
+  try { await navigator.clipboard.writeText(r); } catch {}
+};
+document.getElementById('copiar').onclick = async () => {
+  try { await navigator.clipboard.writeText($out.textContent); } catch {}
+};
+</script>
+</body>
+</html>

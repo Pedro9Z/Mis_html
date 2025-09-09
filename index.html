@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mis utilidades HTML (auto-índice)</title>
+<style>
+  :root { --pad: .8rem; --radius: .75rem; --bg:#f7f7fb; --card:#fff; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background:var(--bg); color:#111; }
+  header { padding: 2rem 1rem 1rem; text-align:center; }
+  h1 { margin:0 0 .5rem; font-size: clamp(1.4rem, 3.5vw, 2rem); }
+  p.lead { margin:.25rem 0 0; color:#555; }
+  .wrap { max-width: 1000px; margin: 1rem auto 2rem; padding: 0 1rem; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; justify-content:space-between; }
+  .toolbar .left, .toolbar .right { display:flex; gap:.6rem; align-items:center; }
+  input[type="search"], select {
+    padding:.6rem .7rem; border:1px solid #ccc; border-radius:.55rem; background:#fff; min-width: 220px;
+  }
+  .grid { margin-top: 1rem; display:grid; gap:.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .card {
+    background:var(--card); border:1px solid #e3e3e8; border-radius:var(--radius); padding:var(--pad);
+    display:flex; flex-direction:column; gap:.35rem; box-shadow: 0 2px 6px rgba(0,0,0,.04);
+    transition: transform .08s ease, box-shadow .08s ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,.08); }
+  .title { font-weight:600; }
+  .muted { color:#666; font-size:.9rem; }
+  a.btn {
+    display:inline-block; align-self:flex-start; margin-top:.3rem; text-decoration:none; font-weight:600;
+    padding:.5rem .7rem; border-radius:.55rem; border:1px solid #1a73e8; color:#1a73e8; background:#eef5ff;
+  }
+  footer { text-align:center; color:#777; padding:1.2rem .8rem 2rem; font-size:.9rem; }
+  .empty { text-align:center; color:#777; padding: 2rem 1rem; }
+  .badge { display:inline-block; font-size:.75rem; color:#444; background:#eef2f7; border:1px solid #dde3ea; border-radius:999px; padding:.1rem .5rem; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>⚡ Mis utilidades HTML</h1>
+    <p class="lead">Listado automático de todos los <strong>.html</strong> de este repositorio (incluye subcarpetas).</p>
+  </header>
+
+  <div class="wrap">
+    <div class="toolbar">
+      <div class="left">
+        <input id="q" type="search" placeholder="Buscar por nombre o carpeta…">
+        <select id="sort">
+          <option value="path-asc">Orden: Ruta (A→Z)</option>
+          <option value="path-desc">Orden: Ruta (Z→A)</option>
+          <option value="name-asc">Orden: Nombre (A→Z)</option>
+          <option value="name-desc">Orden: Nombre (Z→A)</option>
+        </select>
+      </div>
+      <div class="right">
+        <span id="repoBadge" class="badge">Repo: ...</span>
+        <button id="refresh" title="Forzar recarga">🔄 Recargar</button>
+      </div>
+    </div>
+
+    <div id="grid" class="grid"></div>
+    <div id="empty" class="empty" style="display:none">No se encontraron páginas HTML con el filtro actual.</div>
+  </div>
+
+  <footer>
+    Publicado con GitHub Pages · Este índice usa la GitHub API pública (sin token).<br>
+    <span class="muted">Sugerencia: añade tus nuevas utilidades .html y se listarán automáticamente tras el push.</span>
+  </footer>
+
+<script>
+/** ========= Config automática / manual =========
+ * Por defecto intenta deducir OWNER/REPO desde la URL de GitHub Pages:
+ *   https://OWNER.github.io/REPO/...
+ * Si usas dominio personalizado, rellena MANUAL_OWNER / MANUAL_REPO.
+ */
+const MANUAL_OWNER = "";  // ← pon aquí tu usuario si usas dominio personalizado (ej. "Pedro9Z")
+const MANUAL_REPO  = "";  // ← pon aquí tu repo (ej. "mis-html")
+
+function inferOwnerRepo() {
+  if (MANUAL_OWNER && MANUAL_REPO) return { owner: MANUAL_OWNER, repo: MANUAL_REPO };
+  const host = location.hostname;   // p.ej. pedro9z.github.io
+  const path = location.pathname;   // p.ej. /mis-html/...
+  let owner = host.split(".")[0];
+  let repo  = path.split("/").filter(Boolean)[0] || "";
+  // Si estás probando en file:// o localhost, pide datos manuales:
+  if (!owner || host.includes("localhost") || host==="127.0.0.1") {
+    console.warn("Entorno local; usando manual si está definido.");
+    owner = MANUAL_OWNER || owner;
+    repo  = MANUAL_REPO  || repo;
+  }
+  return { owner, repo };
+}
+
+const { owner, repo } = inferOwnerRepo();
+document.getElementById("repoBadge").textContent = `Repo: ${owner}/${repo}`;
+
+const API_URL = (branch="gh-pages") =>
+  // Árbol recursivo del repo en la ref (HEAD resuelve por defecto el branch por defecto)
+  `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`;
+
+// Cache en sessionStorage para evitar golpear la API en cada carga:
+const CACHE_KEY = `gh-tree:${owner}/${repo}`;
+const CACHE_TTL_MS = 60 * 1000; // 60s
+
+async function fetchTree(force=false) {
+  if (!force) {
+    const cached = sessionStorage.getItem(CACHE_KEY);
+    const ts = sessionStorage.getItem(CACHE_KEY+":ts");
+    if (cached && ts && (Date.now() - +ts < CACHE_TTL_MS)) {
+      try { return JSON.parse(cached); } catch {}
+    }
+  }
+  const res = await fetch(API_URL(), { headers: { "Accept":"application/vnd.github+json" } });
+  if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+  const data = await res.json();
+  sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  sessionStorage.setItem(CACHE_KEY+":ts", String(Date.now()));
+  return data;
+}
+
+function humanNameFromPath(p) {
+  const name = p.split("/").pop();
+  return name.replace(/-/g," ").replace(/_/g," ");
+}
+
+function buildPageUrl(path) {
+  // Construye la URL pública en Pages:
+  return `${location.origin}/${owner}.github.io` === location.origin
+    ? `${location.origin}/${repo}/${path}`
+    : `${location.origin}${location.pathname.replace(/\/$/, '')}/${path}`;
+  // Nota: Para dominio personalizado + carpeta, la alternativa sencilla:
+  // return `${path}` relativo funciona si el index está en la raíz del repo en Pages.
+}
+
+function render(list) {
+  const grid = document.getElementById("grid");
+  const empty = document.getElementById("empty");
+  grid.innerHTML = "";
+  if (!list.length) { empty.style.display = ""; return; }
+  empty.style.display = "none";
+
+  for (const itm of list) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = humanNameFromPath(itm.path.replace(/\.html$/i,""));
+    const meta  = document.createElement("div");
+    meta.className = "muted";
+    meta.textContent = itm.path;
+    const link = document.createElement("a");
+    link.className = "btn";
+    link.href = itm.url;
+    link.textContent = "Abrir";
+    link.target = "_blank";
+    card.appendChild(title);
+    card.appendChild(meta);
+    card.appendChild(link);
+    grid.appendChild(card);
+  }
+}
+
+function filterSort(all) {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const sort = document.getElementById("sort").value;
+  let arr = all.filter(x => x.path.toLowerCase().includes(q));
+
+  const cmp = {
+    "path-asc":  (a,b)=> a.path.localeCompare(b.path),
+    "path-desc": (a,b)=> b.path.localeCompare(a.path),
+    "name-asc":  (a,b)=> humanNameFromPath(a.path).localeCompare(humanNameFromPath(b.path)),
+    "name-desc": (a,b)=> humanNameFromPath(b.path).localeCompare(humanNameFromPath(a.path)),
+  }[sort] || ((a,b)=> a.path.localeCompare(b.path));
+
+  arr.sort(cmp);
+  render(arr);
+}
+
+async function init(force=false) {
+  try {
+    const tree = await fetchTree(force);
+    if (!tree || !Array.isArray(tree.tree)) throw new Error("Respuesta sin árbol");
+    // Filtra solo blobs .html (excluye este index.html para no duplicar portada si quieres)
+    const htmls = tree.tree
+      .filter(n => n.type === "blob" && /\.html?$/i.test(n.path))
+      .map(n => ({ path: n.path, url: buildPageUrl(n.path) }))
+      // Opcional: si no quieres mostrar index.html de la raíz:
+      .filter(n => n.path.toLowerCase() !== "index.html");
+
+    window.__HTMLS__ = htmls;
+    filterSort(htmls);
+  } catch (e) {
+    console.error(e);
+    document.getElementById("empty").style.display = "";
+    document.getElementById("empty").textContent =
+      "No se pudo cargar la lista desde la GitHub API. ¿El repo es público y GitHub Pages está activo?";
+  }
+}
+
+document.getElementById("q").addEventListener("input", ()=> filterSort(window.__HTMLS__||[]));
+document.getElementById("sort").addEventListener("change", ()=> filterSort(window.__HTMLS__||[]));
+document.getElementById("refresh").addEventListener("click", ()=> init(true));
+
+init();
+</script>
+</body>
+</html>

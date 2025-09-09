@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Whip-Pan con distorsión</title>
+  <style>
+    #viewport {
+      width: 600px;
+      height: 900px;
+      overflow: hidden;
+      margin: 1em auto;
+      border: 1px solid #ccc;
+      position: relative;
+    }
+    #strip {
+      display: flex;
+      width: 1800px;  /* 3 × 600 */
+      height: 100%;
+      transform: translateX(0);
+    }
+    #strip img {
+      flex-shrink: 0;
+      width: 600px;
+      height: 900px;
+      object-fit: cover;
+    }
+    /* animación whip-pan + blur en panel 2 */
+    @keyframes whip {
+      /* Mantener imagen A 0–50% */
+      37%   { transform: translateX(0); }
+      100%   { transform: translateX(-1200px); }
+      /* Llegar al panel2 y aplicar blur/distorsión */
+      40%  {  filter: none;  }
+      50%  {  filter: blur(50px) contrast(1.2) saturate(1.3);  }    
+      100%  {  filter: none;  } 
+     }
+  </style>
+</head>
+<body>
+  <div style="text-align:center; margin-bottom:1em;">
+    <input type="file" id="inA" accept="image/*">
+    <input type="file" id="inB" accept="image/*">
+    <button id="go">Whip-Pan</button>
+  </div>
+
+  <div id="viewport">
+    <div id="strip">
+      <!-- Aquí se mostrará inicialmente imgA como preview -->
+    </div>
+  </div>
+
+  <script>
+    const inA = document.getElementById('inA');
+    const inB = document.getElementById('inB');
+    const strip = document.getElementById('strip');
+    const btn = document.getElementById('go');
+    let imgA, imgB;
+
+    // Cuando el usuario carga la imagen A, la mostramos en preview
+    inA.addEventListener('change', async () => {
+      if (!inA.files[0]) return;
+      const urlA = URL.createObjectURL(inA.files[0]);
+      imgA = new Image();
+      imgA.src = urlA;
+      imgA.onload = () => {
+        strip.innerHTML = '';
+        strip.appendChild(imgA);
+      };
+    });
+
+    // Cargamos imagen B en memoria
+    inB.addEventListener('change', () => {
+      if (!inB.files[0]) return;
+      const urlB = URL.createObjectURL(inB.files[0]);
+      imgB = new Image();
+      imgB.src = urlB;
+    });
+
+    btn.addEventListener('click', () => {
+      if (!imgA || !imgB) {
+        return alert('Selecciona ambas imágenes antes de whip-pan.');
+      }
+
+      // Construimos un canvas para el panel de transición
+      const w = 600, h = 900;
+      const cvs = document.createElement('canvas');
+      cvs.width = w * 3; cvs.height = h;
+      const ctx = cvs.getContext('2d');
+
+      // 1) Panel A completo
+      ctx.drawImage(imgA, 0, 0, w, h);
+
+      // 2) Panel mixto (mitad derecha A + mitad izquierda B)
+      ctx.drawImage(imgA,
+        w/2, 0, w/2, h,
+        w +   0, 0, w/2, h
+      );
+      ctx.drawImage(imgB,
+        0, 0, w/2, h,
+        w + w/2, 0, w/2, h
+      );
+
+      // 3) Panel B completo
+      ctx.drawImage(imgB, w*2, 0, w, h);
+
+      // Creamos los tres <img> en el strip
+      const midImg = new Image();
+      midImg.src = cvs.toDataURL();
+
+      strip.innerHTML = '';
+      [ imgA.cloneNode(), midImg, imgB.cloneNode() ].forEach(el => {
+        strip.appendChild(el);
+      });
+
+      // Arrancamos la animación
+      strip.style.animation = 'whip 2s ease-in-out forwards';
+
+      // Al acabar, dejamos solo B
+      strip.addEventListener('animationend', () => {
+        strip.style.animation = '';
+        strip.innerHTML = '';
+        strip.appendChild(imgB.cloneNode());
+      }, { once: true });
+    });
+  </script>
+</body>
+</html>
