@@ -4,7 +4,7 @@ Este repositorio contiene varias **páginas HTML offline/online** con herramient
 
 🌐 Acceso público:
 
-https://Pedro9Z.github.io/mis_html/
+https://Pedro9Z.github.io/Mis_html/
 ---
 
 ## 📁 Contenido actual
@@ -26,7 +26,7 @@ https://Pedro9Z.github.io/mis_html/
 4. Guarda y espera unos segundos.
 5. Tu sitio estará disponible en:
 
-https://Pedro9Z.github.io/mis_html/
+https://Pedro9Z.github.io/Mis_html/
 
 
 
