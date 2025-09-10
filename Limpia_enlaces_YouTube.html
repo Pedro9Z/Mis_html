@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Des-redirect YouTube (extrae URL real)</title>
+<body style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:900px;margin:20px auto;padding:0 12px">
+<h2>🧹 Limpiador de enlaces de YouTube</h2>
+<p>Pega texto con enlaces. Extrae la URL real de <code>youtube.com/redirect</code> (parámetro <code>q</code>) y limpia enlaces normales de YouTube.</p>
+
+<h3>Entrada</h3>
+<textarea id="in" style="width:100%;min-height:140px"></textarea><br><br>
+<button id="btn">Procesar</button>
+<button id="btnReplace">Reemplazar en el texto</button>
+<button id="btnClear">Limpiar</button>
+
+<h3>Salida (1 por línea)</h3>
+<textarea id="out" style="width:100%;min-height:140px" readonly></textarea>
+<br><br>
+<button id="btnCopy">Copiar</button>
+
+<script>
+const URL_RE = /https?:\/\/[^\s)<>"]+/ig;
+const STRIP_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","fbclid","gclid","dclid","si","feature","pp","ab_channel","spm","ref","ref_src","ref_url"]);
+
+function multiDecode(s){
+  let prev = s, cur;
+  for (let i=0; i<3; i++){ // hasta 3 intentos por seguridad
+    try { cur = decodeURIComponent(prev); }
+    catch { break; }
+    if (cur === prev) break;
+    prev = cur;
+  }
+  return prev;
+}
+
+function stripTracking(u){
+  // Elimina parámetros de tracking comunes
+  for (const k of [...u.searchParams.keys()]){
+    if (STRIP_PARAMS.has(k)) u.searchParams.delete(k);
+  }
+  return u;
+}
+
+function cleanYouTubeVideo(u){
+  // Devuelve un youtu.be corto con t/list/index si existen
+  const host = u.hostname.toLowerCase();
+  let id = null, t=null, list=null, index=null;
+
+  // tiempos
+  if (u.searchParams.get("t")) t = u.searchParams.get("t");
+  if (!t && u.searchParams.get("start")) t = u.searchParams.get("start");
+
+  list = u.searchParams.get("list");
+  index = u.searchParams.get("index");
+
+  const p = u.pathname.replace(/\/+/g,"/");
+  if (host.includes("youtu.be")){
+    id = p.split("/").filter(Boolean)[0] || null;
+  } else {
+    if (p.startsWith("/watch")) id = u.searchParams.get("v");
+    else if (p.startsWith("/shorts/")) id = p.split("/")[2] || null;
+    else if (p.startsWith("/embed/"))  id = p.split("/")[2] || null;
+    else id = u.searchParams.get("v");
+  }
+  if (!id) return null;
+
+  const out = new URL("https://youtu.be/" + id);
+  if (t) out.searchParams.set("t", t);
+  if (list){ out.searchParams.set("list", list); if (index) out.searchParams.set("index", index); }
+  return out.toString();
+}
+
+function desredirectOne(raw){
+  try{
+    const u = new URL(raw);
+
+    // 1) Caso especial: YouTube redirige a una URL externa oculta en q/u/url
+    if (u.hostname.endsWith("youtube.com") && (u.pathname === "/redirect" || u.pathname === "/attribution_link")){
+      const target = u.searchParams.get("q") || u.searchParams.get("u") || u.searchParams.get("url");
+      if (target){
+        const decoded = multiDecode(target);
+        const real = new URL(decoded);
+        return stripTracking(real).toString();
+      }
+    }
+
+    // 2) Enlaces normales de YouTube -> versión limpia corta
+    if (u.hostname.includes("youtube.com") || u.hostname.includes("youtu.be")){
+      return cleanYouTubeVideo(stripTracking(u)) || raw;
+    }
+
+    // 3) Otros enlaces: solo quitar tracking conocido
+    return stripTracking(u).toString();
+
+  }catch{
+    return raw; // si no parsea, devuélvelo tal cual
+  }
+}
+
+function extractUrls(text){
+  const urls = new Set();
+  for (const m of text.matchAll(URL_RE)) urls.add(m[0]);
+  return [...urls];
+}
+
+function process(){
+  const input = document.getElementById("in").value;
+  const urls = extractUrls(input);
+  const mapping = new Map();
+  for (const u of urls){
+    mapping.set(u, desredirectOne(u));
+  }
+  document.getElementById("out").value = [...mapping.values()].join("\n");
+  return mapping;
+}
+
+document.getElementById("btn").onclick = process;
+
+document.getElementById("btnReplace").onclick = () => {
+  const map = process();
+  let txt = document.getElementById("in").value;
+  for (const [orig, clean] of map.entries()){
+    const re = new RegExp(orig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
+    txt = txt.replace(re, clean);
+  }
+  document.getElementById("in").value = txt;
+};
+
+document.getElementById("btnCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(document.getElementById("out").value); } catch {}
+};
+
+document.getElementById("btnClear").onclick = () => {
+  document.getElementById("in").value = "";
+  document.getElementById("out").value = "";
+};
+</script>
+</body>
+</html>
